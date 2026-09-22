@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Pulse Recorder</title>
+<style>
+:root {
+  --bg: #FBF9F8;
+  --sheet: #FFFFFF;
+  --ink: #1B2230;
+  --muted: #5E6675;
+  --line: #DDD6D3;
+  --line-strong: #9B948F;
+  --grid-minor: #F9E1DE;
+  --grid-major: #F0BDB6;
+  --hr: #C4122F;
+  --spo2: #1F5FBF;
+  --crimson: #C4122F;
+  --ok: #1E8E5A;
+  --link: #1F5FBF;
+  --focus: #1F5FBF;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171C;
+    --sheet: #1A1F27;
+    --ink: #E9EDF3;
+    --muted: #9AA3B2;
+    --line: #2C333E;
+    --line-strong: #5A6472;
+    --grid-minor: #261D23;
+    --grid-major: #3D2831;
+    --hr: #FF6B7A;
+    --spo2: #6FA8FF;
+    --crimson: #D62B47;
+    --ok: #4CC38A;
+    --link: #8DBBFF;
+    --focus: #8DBBFF;
+  }
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+.wrap { max-width: 1040px; margin: 0 auto; padding: 24px 20px 64px; }
+
+h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; }
+h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.3; font-weight: 650; }
+.lede { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+.muted { color: var(--muted); }
+
+.top { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-end; padding-bottom: 20px; border-bottom: 2px solid var(--ink); }
+.conn { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+.status[data-state="on"] .dot { background: var(--ok); }
+.status[data-state="rec"] .dot { background: var(--crimson); }
+.dot.tick { animation: tick 320ms ease-out; }
+@keyframes tick { from { transform: scale(1.9); } to { transform: scale(1); } }
+
+.btn { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 4px; border: 1px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn.rec { background: var(--crimson); border-color: var(--crimson); color: #fff; }
+.btn.rec[data-on="true"] { background: transparent; color: var(--crimson); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:focus-visible, .link:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.banner { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--crimson); border-radius: 4px; }
+
+.strips { display: grid; gap: 12px; margin-top: 24px; }
+.strip { display: grid; grid-template-columns: minmax(190px, 250px) 1fr; border: 1px solid var(--line-strong); background: var(--sheet); }
+.readout { padding: 16px 18px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid var(--line-strong); }
+.figure { display: flex; align-items: baseline; gap: 8px; }
+.num { font-size: clamp(56px, 8vw, 84px); line-height: 1; font-weight: 300; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.num.hr { color: var(--hr); }
+.num.spo2 { color: var(--spo2); }
+.num.stale { opacity: 0.35; }
+.unit { font-size: 18px; color: var(--muted); }
+.name { margin-top: 6px; font-size: 14px; color: var(--muted); }
+.range { font-size: 14px; color: var(--muted); }
+.strip canvas { display: block; width: 100%; height: 150px; }
+
+.hint { min-height: 1.5em; margin: 12px 0 0; color: var(--muted); font-size: 14px; }
+
+.log { margin: 12px 0 0; }
+.log summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+.log summary:focus-visible, .log pre:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.log pre { margin: 8px 0 0; padding: 10px 12px; max-height: 160px; overflow: auto; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+
+.record { margin-top: 32px; }
+.recRow { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.field { flex: 1 1 260px; max-width: 420px; }
+.field span { display: block; margin-bottom: 4px; font-size: 14px; color: var(--muted); }
+input[type="text"] { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--sheet); color: var(--ink); }
+input[type="text"]:disabled { opacity: 0.6; }
+.recStats { align-self: center; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.list { margin-top: 40px; }
+.empty { padding: 20px 0; color: var(--muted); border-top: 1px solid var(--line); }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th { text-align: left; font-size: 14px; font-weight: 600; color: var(--muted); padding: 8px 10px 8px 0; border-bottom: 1px solid var(--ink); }
+td { padding: 12px 10px 12px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+td.actions { white-space: nowrap; text-align: right; padding-right: 0; }
+.link { font: inherit; background: none; border: none; padding: 4px 6px; color: var(--link); text-decoration: underline; cursor: pointer; }
+.link.danger { color: var(--crimson); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.viewer { margin-top: 40px; padding-top: 20px; border-top: 2px solid var(--ink); }
+.vHead { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.vHead h2 { margin: 0; }
+.vBtns { display: flex; gap: 8px; }
+.viewer .strips { margin-top: 16px; }
+
+@media (max-width: 640px) {
+  .strip { grid-template-columns: 1fr; }
+  .readout { border-right: none; border-bottom: 1px solid var(--line-strong); }
+  .top { align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot.tick { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Pulse Recorder</h1>
+      <p class="lede">Live readings from your ESP32, saved on this computer.</p>
+    </div>
+    <div class="conn">
+      <span class="status" id="status" data-state="off"><i class="dot" id="dot"></i><span id="statusText">Not connected</span></span>
+      <button class="btn primary" id="btnConnect" type="button">Connect device</button>
+    </div>
+  </header>
+
+  <p class="banner" id="unsupported" hidden>This page needs Chrome or Edge on a Windows, Mac or Linux computer. Firefox and Safari cannot connect to USB serial devices.</p>
+
+  <section class="strips" aria-label="Live readings">
+    <div class="strip">
+      <div class="readout">
+        <div class="figure"><span class="num hr" id="hrNum">--</span><span class="unit">bpm</span></div>
+        <div class="name">Heart rate</div>
+      </div>
+      <canvas id="hrChart" role="img" aria-label="Heart rate over the last two minutes"></canvas>
+    </div>
+    <div class="strip">
+      <div class="readout">
+        <div class="figure"><span class="num spo2" id="spNum">--</span><span class="unit">%</span></div>
+        <div class="name">Blood oxygen (SpO₂)</div>
+      </div>
+      <canvas id="spChart" role="img" aria-label="Blood oxygen over the last two minutes"></canvas>
+    </div>
+  </section>
+  <p class="hint" id="hint" aria-live="polite">Connect your ESP32 to begin.</p>
+  <details class="log">
+    <summary>Device messages</summary>
+    <pre id="log" tabindex="0">Nothing received yet.</pre>
+  </details>
+
+  <section class="record" aria-labelledby="recH">
+    <h2 id="recH">Record</h2>
+    <div class="recRow">
+      <label class="field"><span>Name (optional)</span><input id="sessName" type="text" maxlength="60" placeholder="Morning, at rest" autocomplete="off"></label>
+      <button class="btn rec" id="btnRec" type="button" data-on="false" disabled>Start recording</button>
+      <div class="recStats" id="recStats" aria-live="polite">Not recording</div>
+    </div>
+  </section>
+
+  <section class="list" aria-labelledby="listH">
+    <h2 id="listH">Recordings</h2>
+    <div class="empty" id="empty">No recordings yet. Connect your device, then press Start recording.</div>
+    <div class="tablewrap" id="tableWrap" hidden>
+      <table>
+        <thead><tr><th>Name</th><th>Started</th><th>Length</th><th>Heart rate, average</th><th>SpO₂, average</th><th><span class="sr">Actions</span></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="viewer" id="viewer" hidden aria-labelledby="vTitle">
+    <div class="vHead">
+      <h2 id="vTitle"></h2>
+      <div class="vBtns">
+        <button class="btn" id="vCsv" type="button">Download CSV</button>
+        <button class="btn" id="vClose" type="button">Close</button>
+      </div>
+    </div>
+    <p class="muted" id="vMeta"></p>
+    <div class="strips">
+      <div class="strip">
+        <div class="readout">
+          <div class="figure"><span class="num hr" id="vHrNum">--</span><span class="unit">bpm</span></div>
+          <div class="name">Heart rate, average</div>
+          <div class="range" id="vHrRange"></div>
+        </div>
+        <canvas id="vHrChart" role="img" aria-label="Heart rate for the whole recording"></canvas>
+      </div>
+      <div class="strip">
+        <div class="readout">
+          <div class="figure"><span class="num spo2" id="vSpNum">--</span><span class="unit">%</span></div>
+          <div class="name">Blood oxygen, average</div>
+          <div class="range" id="vSpRange"></div>
+        </div>
+        <canvas id="vSpChart" role="img" aria-label="Blood oxygen for the whole recording"></canvas>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const LIVE_POINTS = 120;                      // readings kept on the live charts
+  const IDX_KEY = 'pulseRecorder.index';
+  const SES_KEY = 'pulseRecorder.session.';
+  const STALE_MS = 5000;
+
+  let port = null, reader = null, closedPromise = null;
+  let connected = false;
+  let lastDataAt = 0;
+  let connectedAt = 0;
+  let liveHr = [], liveSp = [];
+  let rec = null;                               // recording in progress
+  let viewing = null;                           // session shown in the viewer
+  let storageWarned = false;
+  let linesReceived = 0;                        // every line the board has sent
+  let deviceError = '';                         // error text sent by the board, if any
+  const logLines = [];
+
+  /* ---------- small helpers ---------- */
+  const pad = n => String(n).padStart(2, '0');
+  function fmtDur(sec) {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+  function fmtDateTime(ms) {
+    const d = new Date(ms);
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' +
+           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  const fmtStamp = ms => new Date(ms).toLocaleString('sv-SE');   // 2026-09-20 14:30:12
+  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const duration = s => (s.samples.length ? s.samples[s.samples.length - 1][0] : 0);
+  function stats(arr) {
+    if (!arr.length) return { avg: 0, min: 0, max: 0 };
+    let sum = 0, mn = Infinity, mx = -Infinity;
+    for (const v of arr) { sum += v; if (v < mn) mn = v; if (v > mx) mx = v; }
+    return { avg: sum / arr.length, min: mn, max: mx };
+  }
+
+  /* ---------- storage (browser localStorage on this computer) ---------- */
+  function loadIndex() {
+    try { return JSON.parse(localStorage.getItem(IDX_KEY)) || []; } catch (e) { return []; }
+  }
+  function saveIndex(idx) { localStorage.setItem(IDX_KEY, JSON.stringify(idx)); }
+  function loadSession(id) {
+    try { return JSON.parse(localStorage.getItem(SES_KEY + id)); } catch (e) { return null; }
+  }
+  function persist(s) {
+    try {
+      localStorage.setItem(SES_KEY + s.id, JSON.stringify(s));
+      const idx = loadIndex();
+      const e = idx.find(x => x.id === s.id);
+      if (e) { e.n = s.samples.length; saveIndex(idx); }
+    } catch (err) {
+      if (!storageWarned) {
+        storageWarned = true;
+        setHint('The browser could not save this recording. Storage may be full or blocked. Download your CSV files and delete old recordings.');
+      }
+    }
+  }
+  function removeSession(id) {
+    try {
+      localStorage.removeItem(SES_KEY + id);
+      saveIndex(loadIndex().filter(x => x.id !== id));
+    } catch (e) { /* nothing to remove */ }
+  }
+
+  /* ---------- charts ---------- */
+  function drawSeries(canvas, vals, kind, live, endLabel) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+
+    // value range
+    let lo, hi;
+    if (vals.length) { lo = Math.min(...vals); hi = Math.max(...vals); }
+    else { lo = kind === 'hr' ? 60 : 95; hi = kind === 'hr' ? 100 : 100; }
+    if (kind === 'sp') {
+      hi = 100;
+      lo = Math.min(lo - 2, 94);
+    } else {
+      lo -= 5; hi += 5;
+      if (hi - lo < 40) { const mid = (hi + lo) / 2; lo = mid - 20; hi = mid + 20; }
+    }
+    lo = Math.floor(lo); hi = Math.ceil(hi);
+
+    // ECG-paper grid: small squares every 10px, heavier line every 50px
+    c.lineWidth = 1;
+    c.strokeStyle = cssVar('--grid-minor');
+    c.beginPath();
+    for (let x = 0; x <= w; x += 10) { c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, h); }
+    for (let y = 0; y <= h; y += 10) { c.moveTo(0, y + 0.5); c.lineTo(w, y + 0.5); }
+    c.stroke();
+    c.strokeStyle = cssVar('--grid-major');
+    c.beginPath();
+    for (let x = 0; x <= w; x += 50) { c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, h); }
+    for (let y = 0; y <= h; y += 50) { c.moveTo(0, y + 0.5); c.lineTo(w, y + 0.5); }
+    c.stroke();
+
+    // axis labels
+    const pad = 22;
+    c.fillStyle = cssVar('--muted');
+    c.font = '12px "Segoe UI", system-ui, sans-serif';
+    c.textBaseline = 'middle';
+    c.textAlign = 'left';
+    c.fillText(String(hi), 8, 12);
+    c.fillText(String(lo), 8, h - 12);
+    if (endLabel) { c.textAlign = 'right'; c.fillText(endLabel, w - 8, h - 12); }
+
+    if (!vals.length) return;
+    const n = vals.length;
+    const yOf = v => pad + (hi - v) / (hi - lo) * (h - 2 * pad);
+    const xOf = i => {
+      if (live) return w - 10 - (n - 1 - i) * ((w - 20) / (LIVE_POINTS - 1));
+      return n === 1 ? w / 2 : 8 + i / (n - 1) * (w - 16);
+    };
+
+    c.strokeStyle = cssVar(kind === 'hr' ? '--hr' : '--spo2');
+    c.fillStyle = c.strokeStyle;
+    c.lineWidth = 2;
+    c.lineJoin = 'round';
+    c.beginPath();
+    vals.forEach((v, i) => { i ? c.lineTo(xOf(i), yOf(v)) : c.moveTo(xOf(i), yOf(v)); });
+    c.stroke();
+    if (live || n === 1) {
+      c.beginPath();
+      c.arc(xOf(n - 1), yOf(vals[n - 1]), 4, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  function drawLive() {
+    drawSeries($('hrChart'), liveHr, 'hr', true);
+    drawSeries($('spChart'), liveSp, 'sp', true);
+  }
+  function drawViewer() {
+    if (!viewing) return;
+    const hs = viewing.samples.map(r => r[1]);
+    const ss = viewing.samples.map(r => r[2]);
+    const end = fmtDur(duration(viewing));
+    drawSeries($('vHrChart'), hs, 'hr', false, end);
+    drawSeries($('vSpChart'), ss, 'sp', false, end);
+  }
+  function redraw() { drawLive(); drawViewer(); }
+
+  /* ---------- serial connection ---------- */
+  async function connect() {
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+    } catch (e) {
+      port = null;
+      if (e.name !== 'NotFoundError') {
+        setHint('Could not open the port. Close the Arduino Serial Monitor and any Python recorder, then try again.');
+      }
+      return;
+    }
+    connected = true;
+    lastDataAt = 0;
+    connectedAt = Date.now();
+    linesReceived = 0;
+    deviceError = '';
+    logLines.length = 0;
+    renderLog();
+    updateUi();
+    const decoder = new TextDecoderStream();
+    closedPromise = port.readable.pipeTo(decoder.writable).catch(() => {});
+    reader = decoder.readable.getReader();
+    readLoop();
+  }
+
+  async function readLoop() {
+    let buf = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += value;
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          parseLine(buf.slice(0, i).trim());
+          buf = buf.slice(i + 1);
+        }
+        if (buf.length > 2000) buf = '';
+      }
+    } catch (e) { /* the port was lost */ }
+    try { reader.releaseLock(); } catch (e) { /* already released */ }
+    if (connected) await closePort();          // unplugged or lost
+  }
+
+  async function closePort() {
+    connected = false;
+    try { if (reader) await reader.cancel(); } catch (e) {}
+    try { if (closedPromise) await closedPromise; } catch (e) {}
+    try { if (port) await port.close(); } catch (e) {}
+    port = null; reader = null; closedPromise = null;
+    updateUi();
+  }
+
+  // Accepts "ms,hr,spo2" (complete sketch) and "HR: 75 bpm | SpO2: 98 %" (older sketches)
+  const CSV_RE = /^(\d+),(\d+),(\d+)$/;
+  const TXT_RE = /HR:\s*(\d+)\D+SpO2:\s*(\d+)/i;
+  function addLog(line) {
+    linesReceived++;
+    logLines.push(line);
+    if (logLines.length > 60) logLines.shift();
+    renderLog();
+  }
+  function renderLog() {
+    const pre = $('log');
+    pre.textContent = logLines.length ? logLines.join('\n') : 'Nothing received yet.';
+    pre.scrollTop = pre.scrollHeight;
+  }
+  function parseLine(line) {
+    let m, hr, sp;
+    if (!line) return;
+    addLog(line);
+    if (/FAILED|not found|brownout/i.test(line)) deviceError = line;
+    if ((m = CSV_RE.exec(line))) { hr = +m[2]; sp = +m[3]; }
+    else if ((m = TXT_RE.exec(line))) { hr = +m[1]; sp = +m[2]; }
+    else return;
+    if (hr > 0 && sp > 0) onReading(hr, sp);
+  }
+
+  function onReading(hr, sp) {
+    lastDataAt = Date.now();
+    deviceError = '';
+    liveHr.push(hr); liveSp.push(sp);
+    if (liveHr.length > LIVE_POINTS) { liveHr.shift(); liveSp.shift(); }
+    $('hrNum').textContent = hr;
+    $('spNum').textContent = sp;
+    drawLive();
+    const dot = $('dot');
+    dot.classList.remove('tick'); void dot.offsetWidth; dot.classList.add('tick');
+    if (rec) {
+      const t = Math.round((lastDataAt - rec.start) / 100) / 10;
+      rec.samples.push([t, hr, sp]);
+      persist(rec);
+      updateRecStats();
+    }
+    updateStale();
+  }
+
+  /* ---------- recording ---------- */
+  function startRec() {
+    const typed = $('sessName').value.trim();
+    const now = Date.now();
+    rec = { id: String(now), name: typed || ('Recording ' + fmtDateTime(now)), start: now, samples: [] };
+    try {
+      const idx = loadIndex();
+      idx.push({ id: rec.id, name: rec.name, start: rec.start, n: 0 });
+      saveIndex(idx);
+    } catch (e) { /* persist() will warn */ }
+    persist(rec);
+    updateUi();
+  }
+  function stopRec() {
+    if (!rec) return;
+    if (rec.samples.length === 0) {
+      removeSession(rec.id);
+      rec = null;
+      updateUi();
+      renderList();
+      setHint('Nothing was recorded, because no readings arrived. Place a fingertip on the sensor and try again.');
+      return;
+    }
+    persist(rec);
+    rec = null;
+    $('sessName').value = '';
+    updateUi();
+    renderList();
+  }
+
+  /* ---------- recordings list and viewer ---------- */
+  function renderList() {
+    const idx = loadIndex().filter(e => !rec || e.id !== rec.id).sort((a, b) => b.start - a.start);
+    const body = $('rows');
+    body.innerHTML = '';
+    let shown = 0;
+    for (const e of idx) {
+      const s = loadSession(e.id);
+      if (!s || !s.samples.length) continue;
+      const a = stats(s.samples.map(r => r[1]));
+      const b = stats(s.samples.map(r => r[2]));
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${esc(s.name)}</td>` +
+        `<td>${esc(fmtDateTime(s.start))}</td>` +
+        `<td>${fmtDur(duration(s))}</td>` +
+        `<td>${Math.round(a.avg)} bpm</td>` +
+        `<td>${Math.round(b.avg)} %</td>` +
+        `<td class="actions">` +
+          `<button class="link" type="button" data-act="view" data-id="${esc(e.id)}">View</button>` +
+          `<button class="link" type="button" data-act="csv" data-id="${esc(e.id)}">Download CSV</button>` +
+          `<button class="link danger" type="button" data-act="del" data-id="${esc(e.id)}">Delete</button>` +
+        `</td>`;
+      body.appendChild(tr);
+      shown++;
+    }
+    $('empty').hidden = shown > 0;
+    $('tableWrap').hidden = shown === 0;
+  }
+
+  function openViewer(id) {
+    const s = loadSession(id);
+    if (!s || !s.samples.length) return;
+    viewing = s;
+    const a = stats(s.samples.map(r => r[1]));
+    const b = stats(s.samples.map(r => r[2]));
+    $('vTitle').textContent = s.name;
+    $('vMeta').textContent = `${fmtDateTime(s.start)}. Length ${fmtDur(duration(s))}, ${s.samples.length} readings.`;
+    $('vHrNum').textContent = Math.round(a.avg);
+    $('vSpNum').textContent = Math.round(b.avg);
+    $('vHrRange').textContent = `Low ${a.min}, high ${a.max}`;
+    $('vSpRange').textContent = `Low ${b.min}, high ${b.max}`;
+    $('viewer').hidden = false;
+    drawViewer();
+    $('viewer').scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+  function closeViewer() { viewing = null; $('viewer').hidden = true; }
+
+  function downloadCsv(s) {
+    const rows = ['time,seconds,hr_bpm,spo2_percent'];
+    for (const [t, h, o] of s.samples) rows.push([fmtStamp(s.start + t * 1000), t, h, o].join(','));
+    const blob = new Blob([rows.join('\n') + '\n'], { type: 'text/csv' });
+    const a = document.createElement('a');
+    const safe = s.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'pulse';
+    a.href = URL.createObjectURL(blob);
+    a.download = safe + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  function deleteSession(id) {
+    const s = loadSession(id);
+    const name = s ? s.name : 'this recording';
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    removeSession(id);
+    if (viewing && viewing.id === id) closeViewer();
+    renderList();
+  }
+
+  /* ---------- interface state ---------- */
+  function setHint(text) { $('hint').textContent = text; }
+
+  function updateStale() {
+    if (!connected) return;
+    const stale = Date.now() - (lastDataAt || connectedAt) > STALE_MS;
+    $('hrNum').classList.toggle('stale', stale);
+    $('spNum').classList.toggle('stale', stale);
+    if (/brownout/i.test(deviceError)) {
+      setHint('The board keeps restarting because of low power. Use a short, good USB cable plugged straight into the computer, and add a 220 µF capacitor between 3V3 and GND.');
+    } else if (deviceError) {
+      setHint('The board reports: ' + deviceError + '. Check the sensor and its four wires, then press the EN button on the ESP32.');
+    } else if (stale && linesReceived === 0) {
+      setHint('Nothing received from the board yet. Press the EN button on the ESP32 to restart it, and check that the Arduino Serial Monitor is closed.');
+    } else if (stale) {
+      setHint('The board is connected but has sent no readings. Rest a fingertip lightly on the sensor and hold still for 10 to 20 seconds. If nothing appears, open Device messages below.');
+    } else if (lastDataAt) {
+      setHint('');
+    }
+  }
+
+  function updateRecStats() {
+    if (!rec) { $('recStats').textContent = 'Not recording'; return; }
+    const elapsed = (Date.now() - rec.start) / 1000;
+    $('recStats').textContent = `Recording ${fmtDur(elapsed)}, ${rec.samples.length} readings`;
+  }
+
+  function updateUi() {
+    $('btnConnect').textContent = connected ? 'Disconnect' : 'Connect device';
+    $('btnConnect').classList.toggle('primary', !connected);
+    let state = 'off', text = 'Not connected';
+    if (rec && connected) { state = 'rec'; text = 'Recording'; }
+    else if (rec) { state = 'off'; text = 'Recording paused: device disconnected'; }
+    else if (connected) { state = 'on'; text = 'Connected'; }
+    $('status').dataset.state = state;
+    $('statusText').textContent = text;
+
+    const btn = $('btnRec');
+    btn.textContent = rec ? 'Stop and save' : 'Start recording';
+    btn.dataset.on = rec ? 'true' : 'false';
+    btn.disabled = !connected && !rec;
+    $('sessName').disabled = !!rec;
+    updateRecStats();
+
+    if (!connected) {
+      setHint('Connect your ESP32 to begin. Close the Arduino Serial Monitor first.');
+      $('hrNum').classList.remove('stale');
+      $('spNum').classList.remove('stale');
+    } else if (!lastDataAt) {
+      setHint('Connected. The board restarts when it connects, so readings start after a few seconds.');
+    }
+  }
+
+  /* ---------- start-up ---------- */
+  if (!('serial' in navigator)) {
+    $('unsupported').hidden = false;
+    $('btnConnect').disabled = true;
+    setHint('');
+  }
+
+  $('btnConnect').addEventListener('click', () => { connected ? closePort() : connect(); });
+  $('btnRec').addEventListener('click', () => { rec ? stopRec() : startRec(); });
+  $('vClose').addEventListener('click', closeViewer);
+  $('vCsv').addEventListener('click', () => { if (viewing) downloadCsv(viewing); });
+  $('rows').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-act]');
+    if (!b) return;
+    const id = b.dataset.id;
+    if (b.dataset.act === 'view') openViewer(id);
+    else if (b.dataset.act === 'csv') { const s = loadSession(id); if (s) downloadCsv(s); }
+    else if (b.dataset.act === 'del') deleteSession(id);
+  });
+  window.addEventListener('resize', redraw);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+  setInterval(() => { updateRecStats(); updateStale(); }, 1000);
+
+  drawLive();
+  renderList();
+  updateUi();
+  if (!('serial' in navigator)) setHint('');
+})();
+</script>
+</body>
+</html>
